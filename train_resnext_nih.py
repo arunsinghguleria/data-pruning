@@ -1,6 +1,6 @@
 import os
 import torch
-
+import pandas as pd
 import torch.nn as nn
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.nn.functional import softmax
@@ -12,7 +12,7 @@ from torch.utils.data import DataLoader
 import wandb
 import metrics as metrics
 from utils import create_logger
-from utils import calculate_classwise_accuracy
+from utils import calculate_classwise_accuracy, calculate_GraNd_score, calculate_EL2N_score, get_scores
 from timeit import default_timer as timer
 import argparse
 
@@ -39,7 +39,7 @@ def save_model(models, optimizer, scheduler, epoch, args, folder="saved_models/"
 
 def train(args, debug = False):
     """Training Function"""
-    device = ("cuda:2" if torch.cuda.is_available() else "cpu")
+    device = ("cuda:1" if torch.cuda.is_available() else "cpu")
     NIH_CLASS_CNT = 20
     IMG_SIZE = 512
     tasks = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]     
@@ -97,7 +97,12 @@ def train(args, debug = False):
                     transforms.ToTensor(),
                     transforms.Resize(size=(IMG_SIZE,IMG_SIZE)),
                     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-                ]))
+                ]),
+                    topKClass = args.topKClass,
+                    filteredLabel = None,
+                    type = 'train')
+    
+    filteredLabel = m4_train_data.filteredLabel
 
     if debug:
         print("M4: NIH dataset: Initializing for validation")
@@ -107,7 +112,10 @@ def train(args, debug = False):
                     transforms.ToTensor(),
                     transforms.Resize(size=(IMG_SIZE,IMG_SIZE)),
                     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-                ]))
+                ]),
+                    topKClass = args.topKClass,
+                    filteredLabel = filteredLabel,
+                    type = 'validation')
     
     if debug:
         print("M4: NIH dataset: Initializing for test")
@@ -117,7 +125,10 @@ def train(args, debug = False):
                     transforms.ToTensor(),
                     transforms.Resize(size=(IMG_SIZE,IMG_SIZE)),
                     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-                ]))
+                ]),
+                    topKClass = args.topKClass,
+                    filteredLabel = filteredLabel,
+                    type = 'test')
         
 
     
@@ -129,6 +140,12 @@ def train(args, debug = False):
                                     num_workers = 12,
                                     pin_memory = True,
                                     drop_last=False) # earlier was true
+    # nih_dataLoaderTrain_batch_1 = DataLoader(dataset = m4_train_data,
+    #                                 batch_size = 1,
+    #                                 shuffle = True,
+    #                                 num_workers = 12,
+    #                                 pin_memory = True,
+    #                                 drop_last=False) # earlier was true
     if debug:
         print("M4: NIH dataset: Dataloader for validation")
     nih_dataLoaderVal = DataLoader(dataset = m4_valid_data,
@@ -150,6 +167,12 @@ def train(args, debug = False):
         print("m4 data loaded")       
 
     
+    EL2N_score = pd.DataFrame(m4_train_data.listImagePaths, columns=['image_name'])
+    GraNd_score = pd.DataFrame(m4_train_data.listImagePaths, columns=['image_name'])
+
+    EL2N_score.set_index("image_name", inplace=True)
+    GraNd_score.set_index("image_name", inplace=True)
+
     iter_epochs = tqdm(range(args.num_epochs))
     max_valid_acc = 0.0
     training_samples_cnt = [0] * NIH_CLASS_CNT
@@ -164,6 +187,9 @@ def train(args, debug = False):
         test_losses = 0
         test_correct = 0
         # training mode
+
+        get_scores(model,m4_train_data,optimizer,criterion,device,EL2N_score,GraNd_score,epoch_num)
+
         model.train()
         for batch_no, (images, labels) in enumerate(tqdm(nih_dataLoaderTrain)):
             start = timer()
@@ -208,7 +234,7 @@ def train(args, debug = False):
 
         true_class = torch.zeros(20)
         predict_class = torch.zeros(20)
-
+        continue
         model.eval()
         # for batch_no, (images, labels) in enumerate(tqdm(nih_dataLoaderVal)):
         for batch_no, (images, labels) in enumerate(nih_dataLoaderVal):
@@ -337,6 +363,7 @@ def train(args, debug = False):
 
         end = timer()
         print('Epoch ended in {}s'.format(end - start))
+    
 
     # Save training/validation results.
     if args.store_models and (not args.time_measurement_exp):
@@ -353,6 +380,8 @@ if __name__ == "__main__":
     parser.add_argument('--dataset', type=str, default='nih', help='which dataset to use',
                         choices=['nih'])
     parser.add_argument('--lr', type=float, default=0.0001, help='Learning rate')
+    parser.add_argument('--topKClass', type=int, default=20, help='Learning rate')
+    
     parser.add_argument('--p', type=float, default=0.1, help='Task dropout probability')
     parser.add_argument('--batch_size', type=int, default=16, help='Batch size')
     parser.add_argument('--num_epochs', type=int, default=20, help='Epochs to train for.')
@@ -365,7 +394,7 @@ if __name__ == "__main__":
     parser.add_argument('--store_convergence_stats', action='store_true',
                         help='Whether to store the squared norm of the unitary scalarization gradient at that point')
     parser.add_argument('--weight_decay', type=float, default=0.0, help='L2 regularization.')
-    parser.add_argument('--n_runs', type=int, default=2, help='Number of experiment repetitions.')
+    parser.add_argument('--n_runs', type=int, default=1, help='Number of experiment repetitions.')
     parser.add_argument('--random_seed', type=int, default=1, help='Start random seed to employ for the run.')
     
     parser.add_argument('--baseline_losses_weights', type=int, nargs='+',
@@ -376,3 +405,4 @@ if __name__ == "__main__":
     
     for i in range(args.n_runs):
         train(args, args.debug)
+    
