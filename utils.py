@@ -183,24 +183,12 @@ def calculate_GraNd_score(model):
 
 
 def calculate_EL2N_score(logit,labels):
-    # print('start EL2N score logic ----------------------')
-    # print(logit)
     logit = torch.softmax(logit,dim=1)
-    # print(logit)
-    # print(labels)
 
     logit -= labels
-    # print(logit)
     logit = logit ** 2
-    # print(logit)
     logit = logit.sum().item()
-    # print(logit)
     logit = logit ** 0.5
-    # print(logit)
-
-    # print('end EL2N score logic ----------------------')
-
-
     return logit
 
 
@@ -208,6 +196,10 @@ def calculate_EL2N_score(logit,labels):
 
 
 def get_scores(model,m4_train_data,optimizer,criterion,device,df_EL2N_score,df_GraNd_score,epoch_num):
+
+    '''
+        function will take model and train_sample as input, do inference, calculate GraNd score and EL2N score and will sotre the result in a file.
+    '''
 
     print('---> in get score method <---')
     col_name = 'epoch_'+str(epoch_num)
@@ -230,28 +222,16 @@ def get_scores(model,m4_train_data,optimizer,criterion,device,df_EL2N_score,df_G
         optimizer.zero_grad()
             
         outputs = model(images)
-        # prediction = (outputs >= threshold).to(torch.float32)
-        # print(outputs.shape)
-        # print(labels.shape)
-        # exit()
-        
-        # print(labels.shape,labels)
         _, labels_index = labels.max(1)
         loss = criterion(outputs, labels_index)   
         loss.backward()
 
-            
-            
         GraNd_score = calculate_GraNd_score(model)
         df_GraNd_score.loc[image_path,col_name] = float(GraNd_score)
-        
-        # print('grand score - ',GraNd_score,df_GraNd_score.loc[image_path][col_name])
 
         EL2N_score = calculate_EL2N_score(outputs,labels)
-        df_EL2N_score.loc[image_path,col_name] = float(EL2N_score)
-        
-        # print('EL2N score - ',EL2N_score,df_EL2N_score.loc[image_path][col_name])
-
+        df_EL2N_score.loc[image_path,col_name] = float(EL2N_score)        
+    
     df_EL2N_score.to_csv(f'3_EL2N_score_{epoch_num}.csv')
     df_GraNd_score.to_csv(f'3_GraNd_score{epoch_num}.csv')
 
@@ -260,19 +240,13 @@ def get_scores(model,m4_train_data,optimizer,criterion,device,df_EL2N_score,df_G
 
 
 
-def get_remove_example_names(path,pathDatasetFile,pathImageDirectory ,epoch_no = 6,ratio = 0.2):
-    # listImageLabels = []
+def get_remove_example_names(path,pathDatasetFile,pathImageDirectory,prune_ratio ,epoch_no = 6,ratio = 0.2):
+    '''
+        function will take GraNd score file or EL2N score file as input, and return the names of smaples which are to pruned in DatasetGenerter.
+    '''
     listImageLabels = defaultdict(list)
 
-    print('------->in get_remove_example_names <--------')
-
-    print('------->starting loading data <--------')
-
-    
-    #---- Open file, get image paths and labels
-
     dataset_dict = {}
-
     
     fileDescriptor = open(pathDatasetFile, "r")
         
@@ -295,28 +269,18 @@ def get_remove_example_names(path,pathDatasetFile,pathImageDirectory ,epoch_no =
             dataset_dict[imagePath] = imageLabel
     fileDescriptor.close()
 
-
-
-
-
-
-    print('------->starting creating dictionary <--------')
     
     fileDescriptor = open(path, "r")
         
         #---- get into the loop
-    line = True
-    
     line = fileDescriptor.readline()
 
-    line = fileDescriptor.readline()
+    line = fileDescriptor.readline() # added to ignore the first line (column names)
 
     cnt = 0
         
     while line:
                 
-            
-            #--- if not empty
         if line:
           
             lineItems = line.split(",")
@@ -325,55 +289,30 @@ def get_remove_example_names(path,pathDatasetFile,pathImageDirectory ,epoch_no =
             
             score = [ float(i) for i in lineItems[1:] ]
 
-            # print(img_name,score)
-                
-            # listImageLabels.append(img_name+score) 
             listImageLabels[dataset_dict[img_name[0]]].append(img_name+score)
             
         line = fileDescriptor.readline()
 
+    fileDescriptor.close()
     
     li = []
     for k in listImageLabels.keys():
         listImageLabels[k] = sorted(listImageLabels[k],key = lambda i: i[-1])
-        print(k,len(listImageLabels[k]))
         li.append([k,len(listImageLabels[k])])
     
     li = sorted(li,key = lambda i: i[1],reverse = True)
-    # print(li)
-    prune_ratio_class_wise = [0.9,0.5,0.2] # it will prune number of examples from the dataset based on the score
-    prune_ratio_class_wise = prune_ratio_class_wise + [0]*(len(li) - len(prune_ratio_class_wise))
-    # print(prune_ratio_class_wise)
-
     
-    
-    # listImageLabels = sorted(listImageLabels, key = lambda i: i[-1])
-
-    n = len(listImageLabels)
-
-    # listImageLabels = [i[0] for i in listImageLabels[:int(ratio*n)]]
-    # print(listImageLabels.keys())
     for i in range(len(li)):
         k = li[i][0]
         cnt = li[i][1]
-        ratio = prune_ratio_class_wise[i]
+        ratio = prune_ratio[i]
     
         listImageLabels[k] = listImageLabels[k][:int(ratio*cnt)]
-    print('---> pruning number of examples from each class ---')
     
-    pruned_image_names = []
-    
+    pruned_image_names = set()
+
     for k in listImageLabels.keys():
-        pruned_image_names.extend([i[0] for i in listImageLabels[k]])
-
-
-    
-
-
-
-    fileDescriptor.close()
-
-    print('------->out get_remove_example_names <--------')
-
+        for image in listImageLabels[k]:
+            pruned_image_names.add(image[0])
 
     return pruned_image_names

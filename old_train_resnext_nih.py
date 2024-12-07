@@ -39,6 +39,7 @@ def save_model(models, optimizer, scheduler, epoch, args, folder="saved_models/"
 
 def train(args, debug = False):
     """Training Function"""
+    df = {}
     device = ("cuda:1" if torch.cuda.is_available() else "cpu")
     NIH_CLASS_CNT = 20
     IMG_SIZE = 512
@@ -83,7 +84,23 @@ def train(args, debug = False):
     nih_pathFileBalancedTest = "/data/home1/arunsg/data-pruning/nih-cxr/nih-cxr-lt_single-label_balanced-test.csv"
     model_storage = "/data/home1/arunsg/gitproject/data-pruning/base_model/"
 
-    example_not_to_consider = "/data/home1/arunsg/gitproject/data-pruning/2GraNd_score6.csv"
+    file_name = args.file_name
+    df['experiment_name'] = file_name
+
+    file_path = './experiment_results/'+ file_name
+    if(os.path.exists(file_path)):
+        print('csv file_exist. Results will be appended to existing file.')
+        data_frame = pd.read_csv(file_path)
+    else:
+        print('csv file does not exist. New file will be created to store the results.')
+        data_frame = pd.read_csv('experiment_results.csv')
+
+    prune_ratio = [0.9, 0.5, 0.2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] # here first value should be for class with highest number of examples, second for second hightest and so on...
+    for i in range(20):
+        df['prune_ratio_class_'+str(i)] = prune_ratio[i]
+
+    example_not_to_consider = "/data/home1/arunsg/gitproject/data-pruning/" + file_name
+
 
     
     nih_trBatchSize = args.batch_size
@@ -100,7 +117,7 @@ def train(args, debug = False):
                     transforms.ToTensor(),
                     transforms.Resize(size=(IMG_SIZE,IMG_SIZE)),
                     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-                ]), example_not_to_consider = example_not_to_consider,train = 'train')
+                ]),prune_ratio=prune_ratio, example_not_to_consider = example_not_to_consider,train = 'train')
     if debug:
         print("M4: NIH dataset: Initializing for validation")
     m4_valid_data = DatasetGenerator(pathImageDirectory = nih_pathDirData,
@@ -157,6 +174,7 @@ def train(args, debug = False):
     training_samples_cnt = [0] * NIH_CLASS_CNT
 
     for epoch_num in iter_epochs:
+        df['epoch_num'] = epoch_num
         true_class = torch.zeros(20)
         predict_class = torch.zeros(20)
         train_losses = 0
@@ -243,6 +261,7 @@ def train(args, debug = False):
         epoch_stats = {}
         for i in range(20):
             epoch_stats['val_class_acc_'+str(i)] = acc[i].item()
+            df['val_class_acc_'+str(i)] = acc[i].item()
 
         
         # training_samples_cnt
@@ -256,6 +275,12 @@ def train(args, debug = False):
         epoch_stats['val_medium_acc'] = accuracy['medium']
         epoch_stats['val_tail_acc'] = accuracy['tail']
         epoch_stats['val_total_acc'] = accuracy['total']
+
+
+        df['val_head_acc'] = accuracy['head']
+        df['val_medium_acc'] = accuracy['medium']
+        df['val_tail_acc'] = accuracy['tail']
+        df['val_total_acc'] = accuracy['total']
         
 
 
@@ -290,6 +315,7 @@ def train(args, debug = False):
         # epoch_stats = {}
         for i in range(20):
             epoch_stats['test_class_acc_'+str(i)] = acc[i].item()
+            df['test_class_acc_'+str(i)] = acc[i].item()
 
         
         # training_samples_cnt
@@ -309,6 +335,16 @@ def train(args, debug = False):
         epoch_stats['test_loss'] = test_loss
 
 
+        df['test_head_acc'] = accuracy['head']
+        df['test_medium_acc'] = accuracy['medium']
+        df['test_tail_acc'] = accuracy['tail']
+        df['test_total_acc'] = accuracy['total']
+        
+        df['train_loss'] = train_loss 
+        df['validation_loss'] = valid_loss
+        df['test_loss'] = test_loss
+
+
         # print('-----------------------------------')
         # print(true_class,predict_class)
         # print(acc)
@@ -325,7 +361,10 @@ def train(args, debug = False):
         print('-----------------------------------------------------------------------------')
         print('epoch_stats - ',epoch_stats)
         print('-----------------------------------------------------------------------------')
-        
+
+        # data_frame.append(df,ignore_index=True)
+        new_row = pd.DataFrame([df])
+        data_frame = pd.concat([data_frame,new_row],ignore_index=True)
 
         # Any time one of the model_saver metrics is improved upon, store a corresponding model.
         if max_valid_acc < acc.mean().item():
@@ -339,6 +378,7 @@ def train(args, debug = False):
 
         end = timer()
         print('Epoch ended in {}s'.format(end - start))
+    data_frame.to_csv('./experiment_results/'+ args.file_name,index=False)
 
     # Save training/validation results.
     if args.store_models and (not args.time_measurement_exp):
@@ -355,6 +395,9 @@ if __name__ == "__main__":
     parser.add_argument('--dataset', type=str, default='nih', help='which dataset to use',
                         choices=['nih'])
     parser.add_argument('--lr', type=float, default=0.0001, help='Learning rate')
+
+    parser.add_argument('--file_name', type=str, help='name of the file (csv format) from which examples will be excluded',required=True)
+
     parser.add_argument('--p', type=float, default=0.1, help='Task dropout probability')
     parser.add_argument('--batch_size', type=int, default=16, help='Batch size')
     parser.add_argument('--num_epochs', type=int, default=20, help='Epochs to train for.')
@@ -378,3 +421,4 @@ if __name__ == "__main__":
     
     for i in range(args.n_runs):
         train(args, args.debug)
+        break

@@ -12,12 +12,12 @@ class DatasetGenerator (Dataset):
     
     #-------------------------------------------------------------------------------- 
     
-    def __init__ (self, pathImageDirectory, pathDatasetFile, transform,example_not_to_consider = None,train = None):
+    def __init__ (self, pathImageDirectory, pathDatasetFile, transform,prune_ratio=None,example_not_to_consider = None,train = None):
 
         remove_example = None
 
         if(example_not_to_consider):
-            remove_example = get_remove_example_names(example_not_to_consider,pathDatasetFile,pathImageDirectory)
+            remove_example = get_remove_example_names(example_not_to_consider,pathDatasetFile,pathImageDirectory,prune_ratio)
 
     
         self.listImagePaths = []
