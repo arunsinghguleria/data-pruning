@@ -188,7 +188,6 @@ def train(args, debug = False):
         test_correct = 0
         # training mode
 
-        get_scores(model,m4_train_data,optimizer,criterion,device,EL2N_score,GraNd_score,epoch_num)
 
         model.train()
         for batch_no, (images, labels) in enumerate(tqdm(nih_dataLoaderTrain)):
@@ -234,6 +233,8 @@ def train(args, debug = False):
 
         true_class = torch.zeros(20)
         predict_class = torch.zeros(20)
+        get_scores(model,m4_train_data,optimizer,criterion,device,EL2N_score,GraNd_score,epoch_num)
+
         continue
         model.eval()
         # for batch_no, (images, labels) in enumerate(tqdm(nih_dataLoaderVal)):

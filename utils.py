@@ -232,8 +232,8 @@ def get_scores(model,m4_train_data,optimizer,criterion,device,df_EL2N_score,df_G
         EL2N_score = calculate_EL2N_score(outputs,labels)
         df_EL2N_score.loc[image_path,col_name] = float(EL2N_score)        
     
-    df_EL2N_score.to_csv(f'3_EL2N_score_{epoch_num}.csv')
-    df_GraNd_score.to_csv(f'3_GraNd_score{epoch_num}.csv')
+    df_EL2N_score.to_csv(f'./Scores/EL2N_score_{epoch_num}.csv') 
+    df_GraNd_score.to_csv(f'./Scores/GraNd_score_{epoch_num}.csv')
 
 
 
