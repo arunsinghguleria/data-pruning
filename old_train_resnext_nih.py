@@ -15,6 +15,7 @@ from utils import create_logger
 from utils import calculate_classwise_accuracy
 from timeit import default_timer as timer
 import argparse
+from config import *
 
 #Hyperparameters
 # lr = 2e-4
@@ -77,17 +78,11 @@ def train(args, debug = False):
 
     # nih_classes = [ 'Atelectasis', 'Cardiomegaly', 'Effusion', 'Infiltration', 'Mass', 'Nodule', 'Pneumonia',
                 # 'Pneumothorax', 'Consolidation', 'Edema', 'Emphysema', 'Fibrosis', 'Pleural_Thickening', 'Hernia', 'Normal']
-    nih_pathDirData = "/data/home1/arunsg/data-pruning/dataset/images"
 
-    nih_pathFileTrain = "/data/home1/arunsg/data-pruning/nih-cxr/nih-cxr-lt_single-label_train.csv"
-    nih_pathFileVal = "/data/home1/arunsg/data-pruning/nih-cxr/nih-cxr-lt_single-label_balanced-val.csv"
-    nih_pathFileBalancedTest = "/data/home1/arunsg/data-pruning/nih-cxr/nih-cxr-lt_single-label_balanced-test.csv"
-    model_storage = "/data/home1/arunsg/gitproject/data-pruning/base_model/"
+    # file_name = args.file_name
+    df['experiment_name'] = args.file_name
 
-    file_name = args.file_name
-    df['experiment_name'] = file_name
-
-    file_path = './experiment_results/'+ file_name
+    file_path = './experiment_results/'+ args.file_name[7:]
     if(os.path.exists(file_path)):
         print('csv file_exist. Results will be appended to existing file.')
         data_frame = pd.read_csv(file_path)
@@ -95,11 +90,17 @@ def train(args, debug = False):
         print('csv file does not exist. New file will be created to store the results.')
         data_frame = pd.read_csv('experiment_results.csv')
 
-    prune_ratio = [0.9, 0.5, 0.2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] # here first value should be for class with highest number of examples, second for second hightest and so on...
     for i in range(20):
         df['prune_ratio_class_'+str(i)] = prune_ratio[i]
 
-    example_not_to_consider = "/data/home1/arunsg/gitproject/data-pruning/" + file_name
+    if(args.file_name == 'unforgettable_example'):
+        example_not_to_consider = unforgettable_example_path
+        print(example_not_to_consider)
+    elif(args.file_name=='random_prune'):
+        example_not_to_consider = args.file_name
+    else:
+        example_not_to_consider = "/data/home1/arunsg/gitproject/data-pruning/" + args.file_name
+    
 
 
     
@@ -117,7 +118,8 @@ def train(args, debug = False):
                     transforms.ToTensor(),
                     transforms.Resize(size=(IMG_SIZE,IMG_SIZE)),
                     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-                ]),prune_ratio=prune_ratio, example_not_to_consider = example_not_to_consider,train = 'train')
+                # ]),prune_ratio=prune_ratio, example_not_to_consider = example_not_to_consider,train = 'train',unforgettable_example=  example_not_to_consider )
+                ]),prune_ratio=prune_ratio, example_not_to_consider = example_not_to_consider,train = 'train',unforgettable_example=  None )
     if debug:
         print("M4: NIH dataset: Initializing for validation")
     m4_valid_data = DatasetGenerator(pathImageDirectory = nih_pathDirData,
@@ -378,7 +380,12 @@ def train(args, debug = False):
 
         end = timer()
         print('Epoch ended in {}s'.format(end - start))
-    data_frame.to_csv('./experiment_results/'+ args.file_name,index=False)
+    if(example_not_to_consider=='unforgettable_example'):
+        data_frame.to_csv('./experiment_results/unforgettable_example.csv', index=False)
+    elif(example_not_to_consider=='random_prune'):
+        data_frame.to_csv('./experiment_results/random_pruned.csv', index=False)
+    else:
+        data_frame.to_csv('./experiment_results/'+ args.file_name.split('/')[1],index=False)
 
     # Save training/validation results.
     if args.store_models and (not args.time_measurement_exp):

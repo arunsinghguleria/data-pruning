@@ -8,7 +8,7 @@ from torchvision.transforms.functional import crop
 from tqdm import tqdm
 from collections import defaultdict
 import os
-
+import random
 import logging
 
 def create_logger(name):
@@ -240,7 +240,7 @@ def get_scores(model,m4_train_data,optimizer,criterion,device,df_EL2N_score,df_G
 
 
 
-def get_remove_example_names(path,pathDatasetFile,pathImageDirectory,prune_ratio ,epoch_no = 6,ratio = 0.2):
+def get_pruned_example_names(path,pathDatasetFile,pathImageDirectory,prune_ratio ,epoch_no = 6,ratio = 0.2):
     '''
         function will take GraNd score file or EL2N score file as input, and return the names of smaples which are to pruned in DatasetGenerter.
     '''
@@ -314,5 +314,61 @@ def get_remove_example_names(path,pathDatasetFile,pathImageDirectory,prune_ratio
     for k in listImageLabels.keys():
         for image in listImageLabels[k]:
             pruned_image_names.add(image[0])
+
+    return pruned_image_names
+
+
+def get_pruned_example_names_random(path,pathDatasetFile,pathImageDirectory,prune_ratio ,epoch_no = 6,ratio = 0.2):
+    '''
+        reutrn the names of sample which are randomly pruned
+    '''
+    listImageLabels = defaultdict(list)
+
+    # dataset_dict = {}
+    
+    fileDescriptor = open(pathDatasetFile, "r")
+        
+    #---- get into the loop
+    line = True
+    
+    while line:
+                
+        line = fileDescriptor.readline()
+            
+            #--- if not empty
+        if line:
+          
+            lineItems = line.split(",")
+                
+            imagePath = os.path.join(pathImageDirectory, lineItems[0])
+            imageLabel = lineItems[1:-1]
+            imageLabel = [int(i) for i in imageLabel]
+            imageLabel = imageLabel.index(max(imageLabel))
+            listImageLabels[imageLabel].append(imagePath)
+            # dataset_dict[imagePath] = imageLabel
+    fileDescriptor.close()
+
+    
+    li = []
+    for k in listImageLabels.keys():
+        # listImageLabels[k] = sorted(listImageLabels[k],key = lambda i: i[-1])
+        random.shuffle(listImageLabels[k])
+        li.append([k,len(listImageLabels[k])])
+    
+    li = sorted(li,key = lambda i: i[1],reverse = True)
+    
+    for i in range(len(li)):
+        k = li[i][0]
+        cnt = li[i][1]
+        ratio = prune_ratio[i]
+        listImageLabels[k] = listImageLabels[k][:int(ratio*cnt)]
+    
+    pruned_image_names = set()
+
+    for k in listImageLabels.keys():
+        for image in listImageLabels[k]:
+            pruned_image_names.add(image)
+
+    # print(pruned_image_names)
 
     return pruned_image_names
